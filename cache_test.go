@@ -246,6 +246,29 @@ func TestCacheSetDrops(t *testing.T) {
 	}
 }
 
+// TestCacheUpdateIfPresent verifies that a Set call on an existing key
+// immediately updates the value and cost for that key without using/polluting
+// the Set buffer(s).
+func TestCacheUpdateIfPresent(t *testing.T) {
+	cache := newCache(true)
+	cache.Set(1, 1, 1)
+	// wait for new-item Set to go through
+	time.Sleep(time.Second / 100)
+	// do 100 updates
+	for i := 0; i < 100; i++ {
+		// update the same key (1) with incrementing value and cost, so we can
+		// verify that they are immediately updated and not going through
+		// channels
+		cache.Set(1, i, int64(i))
+		if val, ok := cache.Get(1); !ok || val.(int) != i {
+			t.Fatal("keyUpdate value inconsistent")
+		}
+	}
+	if cache.Metrics().Get(keyUpdate) != 100 {
+		t.Fatal("keyUpdates not being processed immediately")
+	}
+}
+
 // Clairvoyant is a mock cache providing us with optimal hit ratios to compare
 // with Ristretto's. It looks ahead and evicts the absolute least valuable item,
 // which we try to approximate in a real cache.

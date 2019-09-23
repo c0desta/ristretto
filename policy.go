@@ -45,6 +45,9 @@ type policy interface {
 	Cap() int64
 	// Optionally, set stats object to track how policy is performing.
 	CollectMetrics(stats *metrics)
+	// UpdateIfHas updates the key-cost pair if the key already exists in the
+	// policy, returning true if updated.
+	UpdateIfHas(uint64, int64) bool
 }
 
 func newPolicy(numCounters, maxCost int64) policy {
@@ -66,6 +69,12 @@ type defaultPolicy struct {
 	evict   *sampledLFU
 	itemsCh chan []uint64
 	stats   *metrics
+}
+
+func (p *defaultPolicy) UpdateIfHas(key uint64, cost int64) bool {
+	p.Lock()
+	defer p.Unlock()
+	return p.evict.updateIfHas(key, cost)
 }
 
 func (p *defaultPolicy) CollectMetrics(stats *metrics) {
@@ -233,11 +242,8 @@ func (p *sampledLFU) add(key uint64, cost int64) {
 	p.used += cost
 }
 
-// TODO: Move this to the store itself. So, it can be used by public Set.
-func (p *sampledLFU) updateIfHas(key uint64, cost int64) (updated bool) {
-	if prev, exists := p.keyCosts[key]; exists {
-		// Update the cost of the existing key. For simplicity, don't worry about evicting anything
-		// if the updated cost causes the size to grow beyond maxCost.
+func (p *sampledLFU) updateIfHas(key uint64, cost int64) bool {
+	if prev, found := p.keyCosts[key]; found {
 		p.stats.Add(keyUpdate, key, 1)
 		p.used += cost - prev
 		p.keyCosts[key] = cost
@@ -404,6 +410,11 @@ func (p *lruPolicy) Cap() int64 {
 	p.Lock()
 	defer p.Unlock()
 	return int64(p.vals.Len())
+}
+
+// TODO
+func (p *lruPolicy) UpdateIfHas(key uint64, cost int64) bool {
+	return false
 }
 
 // TODO

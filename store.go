@@ -38,7 +38,6 @@ type store interface {
 
 // newStore returns the default store implementation.
 func newStore() store {
-	// return newSyncMap()
 	return newShardedMap()
 }
 

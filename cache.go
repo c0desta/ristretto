@@ -172,11 +172,17 @@ func (c *Cache) Set(key interface{}, val interface{}, cost int64) bool {
 		return false
 	}
 	hash := c.keyHash(key)
-	// TODO: Add a c.store.UpdateIfPresent here. This would catch any value updates and avoid having
-	// to push the key in setBuf.
-
-	// attempt to add the (possibly) new item to the setBuf where it will later
-	// be processed by the policy and evaluated
+	// to prevent clogging channels, update values if the item already exists
+	//
+	// NOTE: these two updates (the policy and hashmap, respectively) are not
+	//       atomic. This could lead to temporary (or permanent?) key-value-cost
+	//       inconsistencies.
+	if c.policy.UpdateIfHas(hash, cost) {
+		c.store.Set(hash, val)
+		return true
+	}
+	// attempt to add the new item to the setBuf where it will later be
+	// processed by the policy and evaluated
 	select {
 	case c.setBuf <- &item{key: hash, val: val, cost: cost}:
 		return true
